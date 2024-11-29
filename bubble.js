@@ -1,158 +1,166 @@
-// Game Constants
-const CANVAS_SIZE = 500;
-const BUBBLE_INTERVAL = 120;
-const HAND_INACTIVITY_THRESHOLD = 5000;
-
-// Game Variables
 let bubbles = [];
 let pointer;
-let bubbleImage, fingerImage, bubbleBurstSound;
-let handPose, video;
+let bubbleImage;
+let fingerImage;
+let bubbleBurstSound;
+let handPose;
+let video;
 let hands = [];
 let score = 0;
 let gameState = "menu";
 let lastHandTime;
 
-// Preload Assets
 function preload() {
   bubbleImage = loadImage("bubble.png");
   fingerImage = loadImage("finger.png");
-  bubbleBurstSound = loadSound("bubble_burst.mp3");
+  bubbleBurstSound = loadSound("bubble_burst.mp3"); // Add your bubble burst sound file here
 }
 
-// Setup function
 function setup() {
-  createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+  createCanvas(500, 500);
+
+  // Initialize pointer for hand tracking
+  pointer = new Bubble();
+  pointer.length = 50;
+
+  // Initialize video capture
   video = createCapture(VIDEO);
   video.size(width, height);
   video.hide();
 
-  pointer = new Pointer();
+  // Initialize handPose model
   handPose = ml5.handPose(video, modelLoaded);
 }
 
-// Model Loaded
 function modelLoaded() {
   console.log("HandPose model loaded");
-  handPose.on("predict", gotHands);
+
+  // Start hand pose detection
+  handPose.detectStart(video, gotHands);
 }
 
-// Hands Detection
 function gotHands(results) {
   if (results.length > 0) {
     hands = results;
-    lastHandTime = millis();
+    lastHandTime = millis(); // Update last hand movement time
+
+    // Get index finger position
     let indexFinger = hands[0].keypoints[8];
-    pointer.updatePosition(indexFinger.x, indexFinger.y);
+
+    // Invert the x position to make the pointer move in the opposite direction
+    pointer.x = width - indexFinger.x;
+    pointer.y = indexFinger.y;
   }
 }
 
-// Draw function
+
 function draw() {
   if (gameState === "menu") {
-    Menu.display();
+    drawMenu();
   } else if (gameState === "play") {
-    Game.play();
+    playGame();
   } else if (gameState === "gameover") {
-    GameOver.display();
+    drawGameOver();
   }
 }
 
-// Menu Class
-class Menu {
-  static display() {
-    background(102, 178, 255);
-    textAlign(CENTER, CENTER);
-    textSize(32);
-    fill(255);
-    text("Bubble Burst Game", width / 2, height / 2 - 50);
-    textSize(20);
-    text("Press ENTER to start", width / 2, height / 2 + 20);
+function drawMenu() {
+  background(102, 178, 255);
+  textAlign(CENTER, CENTER);
+  textSize(32);
+  fill(255);
+  text("Bubble Burst Game", width / 2, height / 2 - 50);
+  textSize(20);
+  text("Press ENTER to start", width / 2, height / 2 + 20);
 
-    if (keyIsPressed && keyCode === ENTER) {
-      Game.start();
-    }
+  if (keyIsPressed && keyCode === ENTER) {
+    startGame();
   }
 }
 
-// Game Class
-class Game {
-  static start() {
-    gameState = "play";
-    score = 0;
-    bubbles = [];
-    lastHandTime = millis();
+function startGame() {
+  gameState = "play";
+  score = 0;
+  bubbles = [];
+  lastHandTime = millis();
+}
+
+function playGame() {
+  background(102, 178, 255);
+
+  // Draw and animate bubbles
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    bubbles[i].create();
+    bubbles[i].move();
+
+    // Check for collisions with the pointer
+    if (bubbles[i].collide(pointer)) {
+      bubbles.splice(i, 1);
+      score++;
+      bubbleBurstSound.play(); // Play sound on burst
+    }
   }
 
-  static play() {
-    background(102, 178, 255);
-
-    // Add and manage bubbles
-    if (frameCount % BUBBLE_INTERVAL === 0) {
-      bubbles.push(new Bubble());
-    }
-
-    for (let i = bubbles.length - 1; i >= 0; i--) {
-      bubbles[i].move();
-      bubbles[i].create();
-      if (bubbles[i].collide(pointer)) {
-        bubbles.splice(i, 1);
-        score++;
-        bubbleBurstSound.play();
-      }
-    }
-
-    pointer.create();
-    this.displayScore();
-    this.checkInactivity();
+  // Add new bubbles periodically
+  if (frameCount % 120 === 0) {
+    bubbles.push(new Bubble());
   }
 
-  static displayScore() {
-    textSize(18);
-    fill(255);
-    text("Score: " + score, 10, 20);
-  }
+  // Draw pointer
+  pointer.create2();
 
-  static checkInactivity() {
-    if (millis() - lastHandTime > HAND_INACTIVITY_THRESHOLD) {
-      gameState = "gameover";
-    }
+  // Draw score
+  drawScore();
+
+  // Check for inactivity
+  if (millis() - lastHandTime > 5000) {
+    gameState = "gameover";
   }
 }
 
-// Game Over Class
-class GameOver {
-  static display() {
-    background(102, 178, 255);
-    textAlign(CENTER, CENTER);
-    textSize(32);
-    fill(255);
-    text("Game Over!", width / 2, height / 2 - 50);
-    textSize(20);
-    text("Final Score: " + score, width / 2, height / 2);
-    text("Press ENTER to restart", width / 2, height / 2 + 50);
+function drawScore() {
+  textSize(18);
+  fill(255);
+  text("Score: " + score, 10, 20);
+}
 
-    if (keyIsPressed && keyCode === ENTER) {
-      Game.start();
-    }
+function drawGameOver() {
+  background(102, 178, 255);
+  textAlign(CENTER, CENTER);
+  textSize(32);
+  fill(255);
+  text("Game Over!", width / 2, height / 2 - 50);
+  textSize(20);
+  text("Final Score: " + score, width / 2, height / 2);
+  text("Press ENTER to restart", width / 2, height / 2 + 50);
+
+  if (keyIsPressed && keyCode === ENTER) {
+    startGame();
   }
 }
 
-// Bubble Class
 class Bubble {
   constructor() {
     this.x = random(-200, -50);
     this.y = random(height);
     this.length = random(40, 80);
-    this.speed = random(1, 3);
+    this.speed = random(1, 3); // Slow bubbles
   }
 
   create() {
     image(bubbleImage, this.x, this.y, this.length, this.length);
   }
 
+  create2() {
+    if (pointer.x && pointer.y) {
+      image(fingerImage, pointer.x - 25, pointer.y - 25, 50, 50);
+    }
+  }
+
   move() {
     this.x += this.speed;
+
+    // Reset bubble if it goes off-screen
     if (this.x > width) {
       this.x = random(-200, -50);
       this.y = random(height);
@@ -161,25 +169,5 @@ class Bubble {
 
   collide(b) {
     return dist(this.x, this.y, b.x, b.y) < (this.length + b.length) / 2;
-  }
-}
-
-// Pointer Class
-class Pointer {
-  constructor() {
-    this.x = 0;
-    this.y = 0;
-    this.length = 50;
-  }
-
-  updatePosition(x, y) {
-    this.x = x;
-    this.y = y;
-  }
-
-  create() {
-    if (this.x && this.y) {
-      image(fingerImage, this.x - 25, this.y - 25, 50, 50);
-    }
   }
 }
